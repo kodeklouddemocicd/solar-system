@@ -14,7 +14,7 @@ env: #added 1
 jobs:
     unit-testing:
         name: Unit Testing
-        services:  #add 11 adding job & service container using database without slowing down system or causing problems info is ephemeral,uses local host to talk to runner example -u and -p 
+        services:  #adding 11 service container using database without slowing down system or causing problems info is ephemeral,uses local host to talk to runner, service thru example -u and -p 
           mongo-db:
             image: siddharth67/mongo-db:non-prod
             ports: 
@@ -64,15 +64,29 @@ jobs:
 
     code-coverage:
       name: Code Coverage
+      container: # adding 12 job container, # the node version setup and add the service container to run both no port mapping need it is exposed on the same port and just add the options, with name and out iin the url 
+        image: node18
+      services:  
+          mongo-db:
+            image: siddharth67/mongo-db:non-prod
+            options:
+              --name mongo
+      env: 
+           MONGO_URI: 'mongodb://mongo:27017/superData' 
+           MONGO_USERNAME: non-prod-user
+           MONGO_PASSWORD: non-prod-password
+      
+      
+      
       runs-on: ubuntu-latest
       steps: 
         - name: Check Repository
           uses: actions/checkout@v6
         
-        - name: Setup NodeJS Version - 18
-          uses: actions/setup-node@v6
-          with:
-            node-version: 18
+      # - name: Setup NodeJS Version - 18
+       #  uses: actions/setup-node@v6
+        # with:
+          # node-version: 18
 
         - name: Cache NPM dependencies #add 5
           uses: actions/cache@v5
