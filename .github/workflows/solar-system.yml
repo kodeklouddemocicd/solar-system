@@ -105,7 +105,7 @@ jobs:
         with:
           context: .  #dot means look for dockerfile in the whole directory
           push: false
-          tags: ${{ secrets.DOCKERHUB_PASSWORD }}/solar-system:${{ github.sha }}
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
       
 
       - name: Docker Image Test #added 8 with a connect to run docker images and action username gets the ip but uses local ip, "live" in the app.js' file means status 
