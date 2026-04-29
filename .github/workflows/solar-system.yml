@@ -97,6 +97,29 @@ jobs:
       - name: Dockerhub Login
         uses: docker/login-action@v4
         with:
-          username: ${{ vars.DOCKERHUB_USERNAME}}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD}}
-  
+      
+      - name: Build and push #added 7 no push get file
+        uses: docker/build-push-action@v7
+        with:
+          context: .              #dot means look for dockerfile in the whole directory
+          push: false
+          tags: ${{ secrets.DOCKERHUB_PASSWORD }}/solar-system:${{ github.sha }}
+      
+
+      - name: Docker Image Test #added 8 with a connect to run docker images and action username gets the ip but uses local ip, "live" in the app.js' file means status 
+        run: |
+          docker images 
+          docker run --name solar-system-app -d  \
+            - p 3000:3000 \
+            -e MONGO_URI=$MONGO_URL \
+            -e MONGO_USERNAME=$MONGO_USERNAME \
+            -e MONGO_PASSWORD=$MONGO_PASSSWORD \
+            ${{ env.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+          export IP=$(docker inpect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app)
+          echo $IP 
+
+          echo Testing Image URL using wget
+          wget -q -O - 127.0.0.1:3000/live | grep live
