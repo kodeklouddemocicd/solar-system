@@ -101,7 +101,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PASSWORD}}
       
       - name: Build and push #added 7 no push get file
-        uses: docker/build-push-action@v2.2.0
+        uses: docker/build-push-action@v4
         with:
           context: .  #dot means look for dockerfile in the whole directory
           push: false
