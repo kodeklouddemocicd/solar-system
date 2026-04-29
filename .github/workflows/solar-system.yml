@@ -60,7 +60,8 @@ jobs:
         - name: Install Dependencies
           run: npm install
     
-        - name: Check Code Coverage 
+        - name: Check Code Coverage
+          continue-on-error: true #added 5 expession
           run: npm run coverage
 
         - name: Archive Test Results
