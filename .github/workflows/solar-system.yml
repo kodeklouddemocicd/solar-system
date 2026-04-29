@@ -14,6 +14,16 @@ env: #added 1
 jobs:
     unit-testing:
         name: Unit Testing
+        services:  #add 11 adding job & service container using database without slowing down system or causing problems info is ephemeral,uses local host to talk to runner example -u and -p 
+          mongo-db:
+            image: siddharth67/monogo-db:non-prod
+            ports: 
+              - 27017:27017
+        env: 
+           MONGO_URI: 'mongodb//localhost:27017/superData' 
+           MONGO_USERNAME: non-prod-user
+           MONGO_PASSWORD: non-prod-password
+
         strategy: #added 3 from strat >> ex: runs-on and added matrix
           matrix:
             nodejs_version: [18,20]
