@@ -101,7 +101,6 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PASSWORD}}
       
       - name: Docker Build and testing #added 7 no push get file
-        continue-on-error: true
         uses: docker/build-push-action@v4
         with:
           context: .  #dot means look for dockerfile in the whole directory
@@ -126,7 +125,6 @@ jobs:
           wget -q -O - 127.0.0.1:3000/live | grep live
 
       - name: Docker Build and push # added 9 
-        continue-on-error: true
         uses: docker/build-push-action@v4
         with:
           context: . 
