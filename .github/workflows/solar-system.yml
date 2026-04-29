@@ -101,9 +101,9 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PASSWORD}}
       
       - name: Build and push #added 7 no push get file
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v2.2.0
         with:
-          context: .              #dot means look for dockerfile in the whole directory
+          context: .  #dot means look for dockerfile in the whole directory
           push: false
           tags: ${{ secrets.DOCKERHUB_PASSWORD }}/solar-system:${{ github.sha }}
       
@@ -113,7 +113,7 @@ jobs:
           docker images 
           docker run --name solar-system-app -d  \
             - p 3000:3000 \
-            -e MONGO_URI=$MONGO_URL \
+            -e MONGO_URI=$MONGO_URI \
             -e MONGO_USERNAME=$MONGO_USERNAME \
             -e MONGO_PASSWORD=$MONGO_PASSSWORD \
             ${{ env.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
