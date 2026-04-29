@@ -16,7 +16,7 @@ jobs:
         name: Unit Testing
         services:  #add 11 adding job & service container using database without slowing down system or causing problems info is ephemeral,uses local host to talk to runner example -u and -p 
           mongo-db:
-            image: siddharth67/monogo-db:non-prod
+            image: siddharth67/mongo-db:non-prod
             ports: 
               - 27017:27017
         env: 
