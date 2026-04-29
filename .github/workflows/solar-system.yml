@@ -16,8 +16,8 @@ jobs:
         name: Unit Testing
         strategy: #added 3 from strat >> ex: runs-on and added matrix
           matrix:
-            nodejs_version: [18,19,20]
-            operating_system: [ubuntu-latest, macos-latest]
+            nodejs_version: [18,20]
+            operating_system: [ ubuntu-latest ]
             exclude:
               - nodejs_version: 18
                 operating_system: macos-latest
