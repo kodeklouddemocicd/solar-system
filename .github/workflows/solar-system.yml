@@ -9,8 +9,8 @@ on:
 
 env: #added 1
     MONGO_URI: 'mongodb+srv://supercluster.d83jj.mongodb.net/superData' 
-    MONGO_USERNAME: ${{vars.MONGO_USERNAME}}
-    MONGO_PASSWORD: ${{secrets.MONGO_PASSWORD}}      
+    MONGO_USERNAME: ${{ vars.MONGO_USERNAME }}
+    MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}      
 jobs:
     unit-testing:
         name: Unit Testing
@@ -21,7 +21,7 @@ jobs:
             exclude:
               - nodejs_version: 18
                 operating_system: macos-latest
-        runs-on: ${{matrix.operating_system}}
+        runs-on: ${{ matrix.operating_system }}
         steps:
         - name: Checkout Repository
           uses: actions/checkout@v6
@@ -29,8 +29,15 @@ jobs:
         - name: Setup NodeJS Version - 18
           uses:  actions/setup-node@v6
           with:
-            node-version: ${{matrix.nodejs_version}}
+            node-version: ${{ matrix.nodejs_version }}
         
+        - name: Cache NPM dependencies
+          uses: actions/cache@v5
+          with:
+            path: node-modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+
         - name: Install Dependencies 
           run: npm install
 
@@ -56,7 +63,13 @@ jobs:
           uses: actions/setup-node@v6
           with:
             node-version: 18
-        
+
+
+        - name: Setup NodeJS Version - 18
+          uses:  actions/setup-node@v6
+          with:
+            node-version: ${{ matrix.nodejs_version }}
+
         - name: Install Dependencies
           run: npm install
     
@@ -71,3 +84,4 @@ jobs:
             path: coverage 
             retention-days: 5 
             
+  
