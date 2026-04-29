@@ -65,7 +65,7 @@ jobs:
     code-coverage:
       name: Code Coverage
       container: # adding 12 job container, # the node version setup and add the service container to run both no port mapping need it is exposed on the same port and just add the options, with name and out iin the url 
-        image: node18
+        image: node:18
       services:  
           mongo-db:
             image: siddharth67/mongo-db:non-prod
