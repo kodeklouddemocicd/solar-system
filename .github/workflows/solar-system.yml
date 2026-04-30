@@ -194,6 +194,7 @@ jobs:
             kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command kubectl config view --raw > copy whole path
 
         - name: Fetch kubernetes Cluster Details 
+          continue-on-error: true
           run: |
             kubectl version 
             echo -----------------------------------------
