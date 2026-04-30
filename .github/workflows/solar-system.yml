@@ -246,7 +246,7 @@ jobs:
         - name: Set App ingress Host URL # passing values between steps and job doc >> make use of the job output then url can go into the second job for testing 
           id: set-ingress-host-address
           run: |
-            echo "APP_INGRESS_HOST=$(kubectl - ${{ vars.NAMESPACE }} get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
+            echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
     
 
 
