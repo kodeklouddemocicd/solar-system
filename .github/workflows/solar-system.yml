@@ -194,22 +194,29 @@ jobs:
             kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command kubectl config view --raw > copy whole path
 
         - name: Fetch kubernetes Cluster Details 
-          continue-on-error: true
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands 
           run: |
             kubectl version 
             echo -----------------------------------------
             kubectl get nodes
-            
+         
+        - name: Dymanically save the Nginx ingress to as a custom GITHUB environment Variable 
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands
+          run: |
+            echo "INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath="{.status.loadbalancer.ingress[0].ip}")" >> $GITHUB_ENV
 
-        #- name: Replace token in Manifest files 
-        #  uses: cschleiden/replace-tokens@v1
-         # with:
-         #   tokenPrefix: '_{_'
-          #  tokenSuffix: '_}_'
-          #  files: '["kubernetes/development/*.yaml"]'
-          #env:
-          #  NAMESPACE: ${{ vars.NAMESPACE }}
-          #  REPLICAS: ${{vars.REPLICAS}}
-          #  IMAGE: ${{e}}
+        - name: Replace token in Manifest files ## replace space holder values in kube development repo before pushing
+          uses: cschleiden/replace-tokens@v1
+          with:
+           tokenPrefix: '_{_'
+           tokenSuffix: '_}_'
+           files: '["kubernetes/development/*.yaml"]'
+          env:
+            NAMESPACE: ${{ vars.NAMESPACE }}
+            REPLICAS: ${{vars.REPLICAS}}
+            IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+            INGRESS_IP: ${{ env.INGRESS_IP }}                                                             ## command: k -n ingress-nginx get svc ingress-nginx-controller #add this part to get only the external ip #-o jsonpath="{.status.loadbalancer.ingress[0].ip}"
                     
-      
+        - name: Check files 
+          run: |
+            cat kubernetes/development/*.yaml
