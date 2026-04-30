@@ -217,6 +217,22 @@ jobs:
             IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
             INGRESS_IP: ${{ env.INGRESS_IP }}                                                             ## command: k -n ingress-nginx get svc ingress-nginx-controller #add this part to get only the external ip #-o jsonpath="{.status.loadbalancer.ingress[0].ip}"
                     
-        - name: Check files 
+        - name: Check files ## checking if the variables are changed in the file
           run: |
             cat kubernetes/development/*.yaml
+
+        - name: Create MongoDB Secret # In development.yaml file the secret ref using DOCKERFILE env needs to be defined and apply the env variables with kubectl apply
+          run: |
+            kubectl -n ${{ vars.NAMESPACE }} create secret genric mongo-db-creds \
+            --from-literal=MONGO_URL=${{ env.MONGO_URI }} \
+            --from-literal=MONGO_USERNAME=${{ env.MONGO_USERNAME }} \
+            --from-literal=MONGO_PASSWORD=${{ env.MONGO_PASSWORD }} \
+            --save-config \
+            --dry-run=client \ 
+            -o yaml | kubectl apply -f - 
+
+        - name: Deloy to Dev Env  ## now that is it defined, deploy
+          run: |
+            Kubectl apply -f kubernetes/development 
+
+        
