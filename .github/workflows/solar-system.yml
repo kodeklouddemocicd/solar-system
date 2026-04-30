@@ -183,14 +183,31 @@ jobs:
           uses: actions/checkout/@v4
 
         - name: install kubectl CLI 
-          uses: azure/setup-kubectl@v4
+          uses: azure/setup-kubectl@v3
           with:
             version: "v1.26.0"
+
+        - name: Set kubeconfig file 
+          uses: azure/k8s-set-context@v5
+          with:
+            method: kubeconfig
+            kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command kubectl config view --raw 
 
         - name: Fetch kubernetes Cluster Details 
           run: |
             kubect1 version --short 
             echo -----------------------------------------
             kubect1 get nodes
-            
+
+        #- name: Replace token in Manifest files 
+        #  uses: cschleiden/replace-tokens@v1
+         # with:
+         #   tokenPrefix: '_{_'
+          #  tokenSuffix: '_}_'
+          #  files: '["kubernetes/development/*.yaml"]'
+          #env:
+          #  NAMESPACE: ${{ vars.NAMESPACE }}
+          #  REPLICAS: ${{vars.REPLICAS}}
+          #  IMAGE: ${{e}}
+                    
       
