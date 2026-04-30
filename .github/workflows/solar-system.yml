@@ -223,7 +223,6 @@ jobs:
             cat kubernetes/development/*.yaml
 
         - name: Create MongoDB Secret # In development.yaml file the secret ref using DOCKERFILE env needs to be defined and apply the env variables with kubectl apply
-          continue-on-error: true
           run: |
             kubectl -n ${{ vars.NAMESPACE }} create secret genric mongo-db-creds \
             --from-literal=MONGO_URL=${{ env.MONGO_URI }} \
@@ -234,6 +233,7 @@ jobs:
             -o yaml | kubectl apply -f - 
 
         - name: Deloy to Dev Env  ## now that is it defined, deploy
+          continue-on-error: true
           run: |
             Kubectl apply -f kubernetes/development 
         
@@ -246,7 +246,7 @@ jobs:
         - name: Set App ingress Host URL # passing values between steps and job doc >> make use of the job output then url can go into the second job for testing 
           id: set-ingress-host-address
           run: |
-            echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
+            echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ingress -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
     
 
 
