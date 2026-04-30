@@ -60,7 +60,7 @@ jobs:
             name: Mocha-Test_results
             path: test-results.xml
 
-#added 4
+     #added 4
 
     code-coverage:
       name: Code Coverage
@@ -75,8 +75,6 @@ jobs:
            MONGO_URI: 'mongodb://mongo:27017/superData' 
            MONGO_USERNAME: non-prod-user
            MONGO_PASSWORD: non-prod-password
-      
-      
       
       runs-on: ubuntu-latest
       steps: 
@@ -108,7 +106,7 @@ jobs:
             path: coverage 
             retention-days: 5 
       
-    #add 6 docker also can do aws ecr 
+           #add 6 docker also can do aws ecr 
 
     docker:
       name: Containerization
@@ -156,13 +154,13 @@ jobs:
 
           echo Testing Image URL using wget
           wget -q -O - 127.0.0.1:3000/live | grep live
-#
-  ##  - name: Docker Build and push # added 9 only pushes to 1 repo 
-    ##   uses: docker/build-push-action@v4
-      ## with:
-      ##   context: . 
-      ##   push: true
-      ##   tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+      ##  - name: Docker Build and push # added 9 only pushes to 1 repo 
+      ##   uses: docker/build-push-action@v4
+        ## with:
+        ##   context: . 
+        ##   push: true
+        ##   tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
 
 
       - name: Container Registry Push # added 10 part 2 pushes to mulitple repos local and docker 
@@ -177,6 +175,8 @@ jobs:
 
     dev-deploy:
       needs: docker 
+      outputs:                                                                          ## remember outputs are for intergration dev testing not for current job how does it work 1. steps >> created in "name: Set App ingress Host URL" >> 2. set-ingress-host-address is the id key >> 3. outputs. is the job level command it needs to be in order to go to 2nd job >> 4. APP_INGRESS_HOST holds the url that is getting transferred
+        APP_INGRESS_URL: ${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }} ## remember outputs are for intergration dev testing not for current job
       runs-on: ubuntu-latest
       steps:
         - name: Checkout Repo 
@@ -191,7 +191,8 @@ jobs:
           uses: azure/k8s-set-context@v5
           with:
             method: kubeconfig
-            kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command kubectl config view --raw > copy whole path
+            kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command: "kubectl config view --raw" > copy whole path > Paste in GITHUB SECERTS AND VARIABLES SETTINGS set it as a secret 
+
 
         - name: Fetch kubernetes Cluster Details 
           continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands 
@@ -222,6 +223,7 @@ jobs:
             cat kubernetes/development/*.yaml
 
         - name: Create MongoDB Secret # In development.yaml file the secret ref using DOCKERFILE env needs to be defined and apply the env variables with kubectl apply
+          continue-on-error: true
           run: |
             kubectl -n ${{ vars.NAMESPACE }} create secret genric mongo-db-creds \
             --from-literal=MONGO_URL=${{ env.MONGO_URI }} \
@@ -234,9 +236,29 @@ jobs:
         - name: Deloy to Dev Env  ## now that is it defined, deploy
           run: |
             Kubectl apply -f kubernetes/development 
-
-## 1. AFTER THE SUCCESS OF THE DEPLOY TO DEV COMMITTED AND WORKS ***
-## 2. GO lunix distro that holds the kubernetes attached ***
-## 3. type in command line: "k -n development get all" >> output: the 2 worker pods (replicas variable number was created Actions secrets and variables settings) running the image amd service cluster-ip ***
-## 4. how to access the app ? type in command line: "k -n development get ing" >> output: HOST URL >> copy >> paste in browser
         
+         ## 1. AFTER THE SUCCESS OF THE DEPLOY TO DEV COMMITTED PUSH WORKFLOW ***
+         ## 2. GO lunix distro that holds the kubernetes attached ***
+         ## 3. type in command line: "k -n development get all" >> output: the 2 worker pods (replicas variable number was created Actions secrets and variables settings) running the image amd service cluster-ip ***
+         ## 4. how to access the app ? type in command line: "k -n development get ing" >> output: HOST URL >> copy >> paste in browser >> interact with app ***
+         ## 5. how to get ONLY the ip address of the host? type in the command line: "k -n development get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}"
+
+        - name: Set App ingress Host URL # passing values between steps and job doc >> make use of the job output then url can go into the second job for testing 
+          id: set-ingress-host-address
+          run: |
+            echo "APP_INGRESS_HOST=$(kubectl - ${{ vars.NAMESPACE }} get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
+    
+
+
+    intergration-testing: 
+       name: Dev Intergration Testing 
+       needs: dev-deploy
+       runs-on: ubuntu-latest
+       steps:
+         - name: Test URL Output using CURL and JQ 
+           env:
+             URL: ${{ needs.dev-deploy.outputs.APP_INGRESS_URL }}   ## after outputs on job 1 is defined, 1. needs is for what the env needs >> 2. dev-deploy is the job the url is hosted in >> 3. outputs is where the env was created with the different pieces >> 4. APP_INGRESS_URL is the key in the pervious job 
+           run: |
+             echo $URL
+             echo "-----------------------------------------"
+             curl https://$URL/live -s -k | jq -r .status | grep -i live 
