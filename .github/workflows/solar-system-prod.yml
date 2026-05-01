@@ -107,40 +107,6 @@ jobs:
             retention-days: 5 
       
            #add 6 docker also can do aws ecr 
-     
-                
-    reports-s3:                                                       #after all steps 7 are done prepare for s3 report 
-      needs: [code-coverage, unit-testing ]
-      name: AWS S3 - Upload Reports
-      runs-on: ubuntu-latest
-      continue-on-error: true
-      steps: 
-        - name: Download Mocha Test Artifact 
-          uses: actions/download-artifact@v3
-          with:
-            name: Mocha-test-Result 
-
-        - name: Download Code Coverage Artifact
-          uses: actions/download-artifact@v3 
-          with: 
-            name: code-coverage-result 
-
-        - name: Merge Test Files
-          run: |
-            ls -ltr
-            mkdir reports-${{ github.sha }}
-            mv cobertura-coverage.xml reports-${{ github.sh }}
-            mv test-results.xml reports-${{ github.sha }}
-            ls -ltr reports ${{ github.sha }}
-
-        - name: Upload to AWS S3
-          run: echo "uploading......."
-          
-
-
-
-
-    
 
     docker:
       name: Containerization
@@ -204,9 +170,9 @@ jobs:
           tags: |
             ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/solar-system${{ github.sha }}
-
-
+            
     dev-deploy:
+      if: contains(github.ref, 'feature/')
       needs: docker
       environment: ## added later for manual approval part of the ci/cd > steps: 1. create a environment on repo setting and name it  >> 2. put secrets and variables at the environment level from repo note it has higher authority then repo secrets and variable > 3. at the kubernetes dev level put enviroments: > 4. then name: put the name of the created environment that holds the secrets and variable >> 5. put https:// and paste the url of the outputs from previous steps involving dev test job and dev intergration using the same url  >> 6. commit and push and go to linux and type in "k -n development get deployments.apps" to see it take higher priority on the replica of work nodes 
         name: development 
@@ -283,8 +249,6 @@ jobs:
           run: |
             echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ingress -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
     
-
-
     dev-intergration-testing: 
        name: Dev Intergration Testing 
        needs: dev-deploy
@@ -298,10 +262,9 @@ jobs:
              echo "-----------------------------------------"
              curl https://$URL/live -s -k | jq -r .status | grep -i live 
 
-
-    
     prod-deploy:
-      needs: dev-intergration-testing
+      if: github.ref == 'refs/heads/main'
+      needs: docker
       environment: ## added later for manual approval part of the ci/cd > steps: 1. create a environment on repo setting and name it  >> 2. put secrets and variables at the environment level from repo note it has higher authority then repo secrets and variable > 3. at the kubernetes dev level put enviroments: > 4. then name: put the name of the created environment that holds the secrets and variable >> 5. put https:// and paste the url of the outputs from previous steps involving dev test job and dev intergration using the same url  >> 6. commit and push and go to linux and type in "k -n development get deployments.apps" to see it take higher priority on the replica of work nodes 
         name: development 
         url: https://${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }}
@@ -377,9 +340,8 @@ jobs:
           run: |
             echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ingress -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
     
-
-
     prod-intergration-testing: 
+       if: github.ref == 'refs/heads/main'
        name: prod Intergration Testing 
        needs: prod-deploy
        runs-on: ubuntu-latest
@@ -402,4 +364,17 @@ jobs:
            ## in previous yml file user tried commit and push production but got denied
            ## KEEP FILES FROM unit testing >> code coverage >>> docker >>  THE SAME
            ## HOW TO DEPLOY IN PRODUCTION ON THE MAIN BRANCH ###
-           ## 1. use a IF EXPRESSION 
+           ## 1. use a IF EXPRESSION "if: contains(github.ref, 'feature/')" in dev-deploy && dev-interagration
+           ## 1.1 when committed and pushed on the feature branch the devs are successful but the prods is skipped  
+           ## 2. use a IF EXPRESSION "if: github.ref == 'refs/heads/main'" + needs: docker in prod-deploy 
+           ## 2.1 use a IF EXPRESSION "if: github.ref == 'refs/heads/main'" prod-interagration BUT KEEP THE NEEDS THE SAME !!
+           ## 2.2 must be in the main branch to commit and push for SUCCESS 
+           ## 2.3 WHY NEED IS DOCKER ? its because when committed it goes thru the unit test > code coverage > docker > prod-deploy > prod-intergation it skips the devs
+           ## 3 REQUEST PULL REQUEST FOR THE FEATURE BRANCH 
+           ## 4. REVIEWER LOOKS AT THE CHANGES >> checks if all ci/cd from unit testing to devs are configured correctly and url link to look at site 
+           ## 5. REVIEWER APPROVES CHANGES AND MERGES CHANGES TO MAIN BRANCH
+           ## 6. commit and push the workflow Now SUCCESSFUL prod and skipped devs
+           ## 7. full CI/CD COMPLETED
+
+
+
