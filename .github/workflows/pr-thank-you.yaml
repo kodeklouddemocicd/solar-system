@@ -29,6 +29,10 @@ jobs:
 # 5. uses:  user has to use the orignal users name, repo and branch >> it allowes the person to use the contents of the full repo, its in main because it got pulled into the main 
 # 6. with: github_token is automatically created by the repo just put ${{secrets.}} also GITHUB_REPO_OWNER is built in to the repo 
 # 7. with: giphy_api_key add the api key from the developer.giphy into the repo secrets 
+# 8. commit changes 
+# 9. make a new branch >> pull request that branch into the main branch 
+# 10. pull request makes the gif on the chat box of pull request opened
+# 11. look at the actions tab > see the steps that it was successful
 
 
 #orignal repo is made up of DOCKERFILE, testing.yml, action.yml for the inputs, entrypoint.sh source code
