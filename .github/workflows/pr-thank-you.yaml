@@ -36,7 +36,9 @@ jobs:
 
 
 #orignal repo is made up of DOCKERFILE, testing.yml, action.yml for the inputs, entrypoint.sh source code
-
+## what is the disadvantage of using docker built custom action
+# 1. it only uses linux 
+# 2. the docker builds are slow when going thru the workflow
 
 
 
