@@ -15,6 +15,12 @@ jobs:
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         giphy-api-key: ${{ secrets.GIPHY_API_KEY }}
+        
+    - name: javascript PR comment 
+      uses: kodeklouddemocicd/js-action-pr-giphy-commit-@v1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        giphy-api-key: ${{ secrets.GIPHY_API_KEY }}
 
 ## how to use docker custom/actions on another repo as it were from the marketplace 
 ## the code allows users to comment gifs after doing a pull request to main branch
