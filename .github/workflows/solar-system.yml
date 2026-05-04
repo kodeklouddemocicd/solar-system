@@ -1,0 +1,405 @@
+name: Solar System Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main 
+      - 'feature/*'
+
+env: #added 1
+    MONGO_URI: 'mongodb+srv://supercluster.d83jj.mongodb.net/superData' 
+    MONGO_USERNAME: ${{ vars.MONGO_USERNAME }}
+    MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}      
+jobs:
+    unit-testing:
+        name: Unit Testing
+        services:  #adding 11 service container using database without slowing down system or causing problems info is ephemeral,uses local host to talk to runner, service thru example -u and -p 
+          mongo-db:
+            image: siddharth67/mongo-db:non-prod
+            ports: 
+              - 27017:27017
+        env: 
+           MONGO_URI: 'mongodb://localhost:27017/superData' 
+           MONGO_USERNAME: non-prod-user
+           MONGO_PASSWORD: non-prod-password
+
+        strategy: #added 3 from strat >> ex: runs-on and added matrix
+          matrix:
+            nodejs_version: [18,20]
+            operating_system: [ ubuntu-latest ]
+            exclude:
+              - nodejs_version: 18
+                operating_system: macos-latest
+        runs-on: ${{ matrix.operating_system }}
+        steps:
+        - name: Checkout Repository
+          uses: actions/checkout@v6
+        
+        - name: Setup NodeJS Version - 18
+          uses:  actions/setup-node@v6
+          with:
+            node-version: ${{ matrix.nodejs_version }}
+        
+        - name: Cache NPM dependencies #add 5
+          uses: actions/cache@v3
+          with:
+            path: node_modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+
+        - name: Install Dependencies 
+          run: npm install
+
+        - name: Unit testing 
+          run: npm test
+
+        - name: archive Test Result #added 2
+          uses: actions/upload-artifact@v7
+          with:
+            name: Mocha-Test_results
+            path: test-results.xml
+
+     #added 4
+
+    code-coverage:
+      name: Code Coverage
+      container: # adding 12 job container, # the node version setup and add the service container to run both no port mapping need it is exposed on the same port and just add the options, with name and out iin the url 
+        image: node:18
+      services:  
+          mongo-db:
+            image: siddharth67/mongo-db:non-prod
+            options:
+              --name mongo
+      env: 
+           MONGO_URI: 'mongodb://mongo:27017/superData' 
+           MONGO_USERNAME: non-prod-user
+           MONGO_PASSWORD: non-prod-password
+      
+      runs-on: ubuntu-latest
+      steps: 
+        - name: Check Repository
+          uses: actions/checkout@v6
+        
+          # - name: Setup NodeJS Version - 18
+          #  uses: actions/setup-node@v6
+          # with:
+          # node-version: 18
+
+        - name: Cache NPM dependencies #add 5 allows user to go to actions and reuse the depenecies lowering boot time, if file is alterated then cant get the dependeies, key& path are important 
+          uses: actions/cache@v5
+          with:
+            path: node_modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+        - name: Install Dependencies
+          run: npm install
+    
+        - name: Check Code Coverage
+          continue-on-error: true #added 5 expression, if and continue are important 
+          run: npm run coverage
+
+        - name: Archive Test Results
+          uses: actions/upload-artifact@v7
+          with:
+            name: Code-Coverage-Result
+            path: coverage 
+            retention-days: 5 
+      
+           #add 6 docker also can do aws ecr 
+     
+                
+    reports-s3:                                                       #after all steps 7 are done prepare for s3 report 
+      needs: [code-coverage, unit-testing ]
+      name: AWS S3 - Upload Reports
+      runs-on: ubuntu-latest
+      continue-on-error: true
+      steps: 
+        - name: Download Mocha Test Artifact 
+          uses: actions/download-artifact@v8
+          with:
+            name: Mocha-test-Result 
+
+        - name: Download Code Coverage Artifact
+          uses: actions/download-artifact@v8 
+          with: 
+            name: code-coverage-result 
+
+        - name: Merge Test Files
+          run: |
+            ls -ltr
+            mkdir reports-${{ github.sha }}
+            mv cobertura-coverage.xml reports-${{ github.sh }}
+            mv test-results.xml reports-${{ github.sha }}
+            ls -ltr reports ${{ github.sha }}
+
+        - name: Upload to AWS S3
+          run: echo "uploading......."
+
+
+
+
+
+    
+
+    docker:
+      name: Containerization
+      needs: [ unit-testing, code-coverage ]
+      permissions:               ##added 11 after fail
+        packages: write  
+      runs-on: ubuntu-latest
+      steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: Dockerhub Login
+        uses: docker/login-action@v2.2.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD}}
+
+      - name: GHCR Login # added 10 the username and password do not needed to be added its built in
+        uses: docker/login-action@v2.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }} 
+      
+      - name: Docker Build and testing #added 7 no push get file
+        uses: docker/build-push-action@v4
+        with:
+          context: .  #dot means look for dockerfile in the whole directory
+          push: false
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+      
+
+      - name: Docker Image Test #added 8 with a connect to run docker images and action username gets the ip but uses local ip, "live" in the app.js' file means status 
+        run: |
+          docker images 
+          docker run --name solar-system-app -d  \
+            -p 3000:3000 \
+            -e MONGO_URI=$MONGO_URI \
+            -e MONGO_USERNAME=$MONGO_USERNAME \
+            -e MONGO_PASSWORD=$MONGO_PASSSWORD \
+            ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+          export IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app)
+          echo $IP 
+          echo Testing Image URL using wget
+          wget -q -O - 127.0.0.1:3000/live | grep live
+
+        ##  - name: Docker Build and push # added 9 only pushes to 1 repo 
+        ##   uses: docker/build-push-action@v4
+        ## with:
+        ##   context: . 
+        ##   push: true
+        ##   tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+
+      - name: Container Registry Push # added 10 part 2 pushes to mulitple repos local and docker 
+        uses: docker/build-push-action@v4
+        with:
+          context: . 
+          push: true
+          tags: |
+            ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/solar-system${{ github.sha }}
+
+
+    dev-deploy:
+      needs: docker
+      environment: ## added later for manual approval part of the ci/cd > steps: 1. create a environment on repo setting and name it  >> 2. put secrets and variables at the environment level from repo note it has higher authority then repo secrets and variable > 3. at the kubernetes dev level put enviroments: > 4. then name: put the name of the created environment that holds the secrets and variable >> 5. put https:// and paste the url of the outputs from previous steps involving dev test job and dev intergration using the same url  >> 6. commit and push and go to linux and type in "k -n development get deployments.apps" to see it take higher priority on the replica of work nodes 
+        name: development 
+        url: https://${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }}
+      outputs:                                                                          ## remember outputs are for intergration dev testing not for current job how does it work 1. steps >> created in "name: Set App ingress Host URL" >> 2. set-ingress-host-address is the id key >> 3. outputs. is the job level command it needs to be in order to go to 2nd job >> 4. APP_INGRESS_HOST holds the url that is getting transferred
+        APP_INGRESS_URL: ${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }} ## remember outputs are for intergration dev testing not for current job
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout Repo 
+          uses: actions/checkout/@v4
+
+        - name: install kubectl CLI 
+          uses: azure/setup-kubectl@v3
+          with:
+            version: "v1.26.0"
+
+        - name: Set kubeconfig file 
+          uses: azure/k8s-set-context@v5
+          with:
+            method: kubeconfig
+            kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command: "kubectl config view --raw" > copy whole path > Paste in GITHUB SECERTS AND VARIABLES SETTINGS set it as a secret 
+
+
+        - name: Fetch kubernetes Cluster Details 
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands 
+          run: |
+            kubectl version 
+            echo -----------------------------------------
+            kubectl get nodes
+         
+        - name: Dymanically save the Nginx ingress to as a custom GITHUB environment Variable 
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands
+          run: |
+            echo "INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath="{.status.loadbalancer.ingress[0].ip}")" >> $GITHUB_ENV
+
+        - name: Replace token in Manifest files ## replace space holder values in kube development repo before pushing
+          uses: cschleiden/replace-tokens@v1
+          with:
+           tokenPrefix: '_{_'
+           tokenSuffix: '_}_'
+           files: '["kubernetes/development/*.yaml"]'
+          env:
+            NAMESPACE: ${{ vars.NAMESPACE }}
+            REPLICAS: ${{vars.REPLICAS}}
+            IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+            INGRESS_IP: ${{ env.INGRESS_IP }}                                                             ## command: k -n ingress-nginx get svc ingress-nginx-controller #add this part to get only the external ip #-o jsonpath="{.status.loadbalancer.ingress[0].ip}"
+                    
+        - name: Check files ## checking if the variables are changed in the file
+          run: |
+            cat kubernetes/development/*.yaml
+
+        - name: Create MongoDB Secret # In development.yaml file the secret ref using DOCKERFILE env needs to be defined and apply the env variables with kubectl apply
+          run: |
+            kubectl -n ${{ vars.NAMESPACE }} create secret genric mongo-db-creds \
+            --from-literal=MONGO_URL=${{ env.MONGO_URI }} \
+            --from-literal=MONGO_USERNAME=${{ vars.MONGO_USERNAME }} \
+            --from-literal=MONGO_PASSWORD=${{ secrets.MONGO_PASSWORD }} \
+            --save-config \
+            --dry-run=client \ 
+            -o yaml | kubectl apply -f - 
+
+        - name: Deloy to Dev Env  ## now that is it defined, deploy
+          run: |
+            Kubectl apply -f kubernetes/development 
+        
+         ## 1. AFTER THE SUCCESS OF THE DEPLOY TO DEV COMMITTED PUSH WORKFLOW ***
+         ## 2. GO lunix distro that holds the kubernetes attached ***
+         ## 3. type in command line: "k -n development get all" >> output: the 2 worker pods (replicas variable number was created Actions secrets and variables settings) running the image amd service cluster-ip ***
+         ## 4. how to access the app ? type in command line: "k -n development get ing" >> output: HOST URL >> copy >> paste in browser >> interact with app ***
+         ## 5. how to get ONLY the ip address of the host? type in the command line: "k -n development get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}"
+
+        - name: Set App ingress Host URL # passing values between steps and job doc >> make use of the job output then url can go into the second job for testing 
+          id: set-ingress-host-address
+          run: |
+            echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ingress -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
+    
+
+
+    dev-intergration-testing: 
+       name: Dev Intergration Testing 
+       needs: dev-deploy
+       runs-on: ubuntu-latest
+       steps:
+         - name: Test URL Output using CURL and JQ 
+           env:
+             URL: ${{ needs.dev-deploy.outputs.APP_INGRESS_URL }}   ## after outputs on job 1 is defined, 1. needs is for what the env needs >> 2. dev-deploy is the job the url is hosted in >> 3. outputs is where the env was created with the different pieces >> 4. APP_INGRESS_URL is the key in the pervious job 
+           run: |
+             echo $URL
+             echo "-----------------------------------------"
+             curl https://$URL/live -s -k | jq -r .status | grep -i live 
+
+
+    
+    prod-deploy:
+      needs: dev-intergration-testing
+      environment: ## added later for manual approval part of the ci/cd > steps: 1. create a environment on repo setting and name it  >> 2. put secrets and variables at the environment level from repo note it has higher authority then repo secrets and variable > 3. at the kubernetes dev level put enviroments: > 4. then name: put the name of the created environment that holds the secrets and variable >> 5. put https:// and paste the url of the outputs from previous steps involving dev test job and dev intergration using the same url  >> 6. commit and push and go to linux and type in "k -n development get deployments.apps" to see it take higher priority on the replica of work nodes 
+        name: development 
+        url: https://${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }}
+      outputs:                                                                          ## remember outputs are for intergration dev testing not for current job how does it work 1. steps >> created in "name: Set App ingress Host URL" >> 2. set-ingress-host-address is the id key >> 3. outputs. is the job level command it needs to be in order to go to 2nd job >> 4. APP_INGRESS_HOST holds the url that is getting transferred
+        APP_INGRESS_URL: ${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }} ## remember outputs are for intergration dev testing not for current job
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout Repo 
+          uses: actions/checkout/@v4
+
+        - name: install kubectl CLI 
+          uses: azure/setup-kubectl@v3
+          with:
+            version: "v1.26.0"
+
+        - name: Set kubeconfig file 
+          uses: azure/k8s-set-context@v5
+          with:
+            method: kubeconfig
+            kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command: "kubectl config view --raw" > copy whole path > Paste in GITHUB SECERTS AND VARIABLES SETTINGS set it as a secret 
+
+
+        - name: Fetch kubernetes Cluster Details 
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands 
+          run: |
+            kubectl version 
+            echo -----------------------------------------
+            kubectl get nodes
+         
+        - name: Dymanically save the Nginx ingress to as a custom GITHUB environment Variable 
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands
+          run: |
+            echo "INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath="{.status.loadbalancer.ingress[0].ip}")" >> $GITHUB_ENV
+
+        - name: Replace token in Manifest files ## replace space holder values in kubernetes production.yaml repo file before pushing
+          uses: cschleiden/replace-tokens@v1
+          with:
+           tokenPrefix: '_{_'
+           tokenSuffix: '_}_'
+           files: '["kubernetes/production/*.yaml"]'
+          env:
+            NAMESPACE: ${{ vars.NAMESPACE }}
+            REPLICAS: ${{vars.REPLICAS}}
+            IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+            INGRESS_IP: ${{ env.INGRESS_IP }}                                                             ## command: k -n ingress-nginx get svc ingress-nginx-controller #add this part to get only the external ip #-o jsonpath="{.status.loadbalancer.ingress[0].ip}"
+                    
+        - name: Check files ## checking if the variables are changed in the file
+          run: |
+            cat kubernetes/production/*.yaml
+
+        - name: Create MongoDB Secret # In development.yaml file the secret ref using DOCKERFILE env needs to be defined and apply the env variables with kubectl apply
+          run: |
+            kubectl -n ${{ vars.NAMESPACE }} create secret genric mongo-db-creds \
+            --from-literal=MONGO_URL=${{ env.MONGO_URI }} \
+            --from-literal=MONGO_USERNAME=${{ vars.MONGO_USERNAME }} \
+            --from-literal=MONGO_PASSWORD=${{ secrets.MONGO_PASSWORD }} \
+            --save-config \
+            --dry-run=client \ 
+            -o yaml | kubectl apply -f - 
+
+        - name: Deloy to prod Env  ## now that is it defined, deploy
+          run: |
+            Kubectl apply -f kubernetes/production 
+        
+         ## 1. AFTER THE SUCCESS OF THE DEPLOY TO DEV COMMITTED PUSH WORKFLOW ***
+         ## 2. GO lunix distro that holds the kubernetes attached ***
+         ## 3. type in command line: "k -n development get all" >> output: the 2 worker pods (replicas variable number was created Actions secrets and variables settings) running the image amd service cluster-ip ***
+         ## 4. how to access the app ? type in command line: "k -n development get ing" >> output: HOST URL >> copy >> paste in browser >> interact with app ***
+         ## 5. how to get ONLY the ip address of the host? type in the command line: "k -n development get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}"
+
+        - name: Set App ingress Host URL # passing values between steps and job doc >> make use of the job output then url can go into the second job for testing 
+          id: set-ingress-host-address
+          run: |
+            echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ingress -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
+    
+
+
+    prod-intergration-testing: 
+       name: prod Intergration Testing 
+       needs: prod-deploy
+       runs-on: ubuntu-latest
+       steps:
+         - name: Test URL Output using CURL and JQ 
+           env:
+             URL: ${{ needs.prod-deploy.outputs.APP_INGRESS_URL }}   ## after outputs on job 1 is defined, 1. needs is for what the env needs >> 2. dev-deploy is the job the url is hosted in >> 3. outputs is where the env was created with the different pieces >> 4. APP_INGRESS_URL is the key in the pervious job 
+           run: |
+             echo $URL
+             echo "-----------------------------------------"
+             curl https://$URL/live -s -k | jq -r .status | grep -i live 
+
+           ## CHANGE ALL DEV INPUTS >>> TO PROD BEFORE COMMITTING  ## also make sure to add the secrets and variables and restrictions at the repo environment level before prod is committed and pushed 
+           ## in environment named: production in repo setting  create 3 rules, and 2 variable and 1 secret 
+           ## rules: timer, reviewer, ONLY MAIN branch can deploy | variable is NAMESPACE = production, REPLICA = 5 , KUBECONFIG = kuberenetes config key that connects github actions to it 
+           ## successful commits are only on the main branch others are rejected 
+           ## GO TO solar-system-prod.yml and see how it gets deployed 
+
+           ## welcome to solar-system-prod.yml
+           ## in previous yml file user tried commit and push production but got denied
+           ## KEEP FILES FROM unit testing >> code coverage >>> docker >>  THE SAME
+           ## HOW TO DEPLOY IN PRODUCTION ON THE MAIN BRANCH ###
+           ## 1. use a IF EXPRESSION 

@@ -1,0 +1,41 @@
+name: Label issues (Script  Injection)
+
+on:
+  issues:
+    types: 
+      - opened 
+
+jobs:
+  assign-label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.1
+      - name: add a label
+        env:
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: | 
+          issue_title="${{ github.event.issue.title }}"
+          if [[ "$issue_title" == *"bug"* ]]; then
+             echo "issue is about a bug!"
+             echo "Assigning Label - BUG .... .... .... .... .... .."
+          else
+            echo "Not a bug "
+          fi 
+
+#HOW IT WORKS 
+# 1. workflow gets triggered when a new issue is opened on the isssue tab, it will excute to this workflow
+# 2. job name is assign label it runs on github hosted ubuntu runner
+# 3. checkout is to check repo if the issue is active is on the this repo
+# 4. add name assign label as a env at the step level for aws to connect iam in secrets
+# 5. git hub is going to store issue in: issue_title="${{ github.event.issue.title }}"
+# 6. run a if, else and fi statement if there is a breach or not in github repo, it will assign a new label 
+# 7. Commit and push >> go to issues sumbit a issue>> workflow is triggered >> go to actions see the logs 
+# 8. go back to issues and put bug"; $GITHUB_WORKSPACE" is command after the double quotes"" that wants to get a list of repo >> it injects malicious code 
+# 9. go to the logs the malicies code gets excuted all contents of file is shown
+
+
+        
+
+
+
+

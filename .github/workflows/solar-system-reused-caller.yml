@@ -1,0 +1,284 @@
+name: Solar System Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main 
+      - 'feature/*'
+
+env: #added 1
+    MONGO_URI: 'mongodb+srv://supercluster.d83jj.mongodb.net/superData' 
+    MONGO_USERNAME: ${{ vars.MONGO_USERNAME }}
+    MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}      
+jobs:
+    unit-testing:
+        name: Unit Testing
+        services:  #adding 11 service container using database without slowing down system or causing problems info is ephemeral,uses local host to talk to runner, service thru example -u and -p 
+          mongo-db:
+            image: siddharth67/mongo-db:non-prod
+            ports: 
+              - 27017:27017
+        env: 
+           MONGO_URI: 'mongodb://localhost:27017/superData' 
+           MONGO_USERNAME: non-prod-user
+           MONGO_PASSWORD: non-prod-password
+
+        strategy: #added 3 from strat >> ex: runs-on and added matrix
+          matrix:
+            nodejs_version: [18,20]
+            operating_system: [ ubuntu-latest ]
+            exclude:
+              - nodejs_version: 18
+                operating_system: macos-latest
+        runs-on: ${{ matrix.operating_system }}
+        steps:
+        - name: Checkout Repository
+          uses: actions/checkout@v6
+        
+        - name: Setup NodeJS Version - 18
+          uses:  actions/setup-node@v6
+          with:
+            node-version: ${{ matrix.nodejs_version }}
+        
+        - name: Cache NPM dependencies #add 5
+          uses: actions/cache@v3
+          with:
+            path: node_modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+
+        - name: Install Dependencies 
+          run: npm install
+
+        - name: Unit testing 
+          run: npm test
+
+        - name: archive Test Result #added 2
+          uses: actions/upload-artifact@v7
+          with:
+            name: Mocha-Test_results
+            path: test-results.xml
+
+     #added 4
+
+    code-coverage:
+      name: Code Coverage
+      container: # adding 12 job container, # the node version setup and add the service container to run both no port mapping need it is exposed on the same port and just add the options, with name and out iin the url 
+        image: node:18
+      services:  
+          mongo-db:
+            image: siddharth67/mongo-db:non-prod
+            options:
+              --name mongo
+      env: 
+           MONGO_URI: 'mongodb://mongo:27017/superData' 
+           MONGO_USERNAME: non-prod-user
+           MONGO_PASSWORD: non-prod-password
+      
+      runs-on: ubuntu-latest
+      steps: 
+        - name: Check Repository
+          uses: actions/checkout@v6
+        
+          # - name: Setup NodeJS Version - 18
+          #  uses: actions/setup-node@v6
+          # with:
+          # node-version: 18
+
+        - name: Cache NPM dependencies #add 5 allows user to go to actions and reuse the depenecies lowering boot time, if file is alterated then cant get the dependeies, key& path are important 
+          uses: actions/cache@v5
+          with:
+            path: node_modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+        - name: Install Dependencies
+          run: npm install
+    
+        - name: Check Code Coverage
+          continue-on-error: true #added 5 expression, if and continue are important 
+          run: npm run coverage
+
+        - name: Archive Test Results
+          uses: actions/upload-artifact@v7
+          with:
+            name: Code-Coverage-Result
+            path: coverage 
+            retention-days: 5 
+      
+           #add 6 docker also can do aws ecr 
+
+    docker:
+      name: Containerization
+      needs: [ unit-testing, code-coverage ]
+      permissions:               ##added 11 after fail
+        packages: write  
+      runs-on: ubuntu-latest
+      steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: Dockerhub Login
+        uses: docker/login-action@v2.2.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD}}
+
+      - name: GHCR Login # added 10 the username and password do not needed to be added its built in
+        uses: docker/login-action@v2.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }} 
+      
+      - name: Docker Build and testing #added 7 no push get file
+        uses: docker/build-push-action@v4
+        with:
+          context: .  #dot means look for dockerfile in the whole directory
+          push: false
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+      
+
+      - name: Docker Image Test #added 8 with a connect to run docker images and action username gets the ip but uses local ip, "live" in the app.js' file means status 
+        run: |
+          docker images 
+          docker run --name solar-system-app -d  \
+            -p 3000:3000 \
+            -e MONGO_URI=$MONGO_URI \
+            -e MONGO_USERNAME=$MONGO_USERNAME \
+            -e MONGO_PASSWORD=$MONGO_PASSSWORD \
+            ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+          export IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app)
+          echo $IP 
+          echo Testing Image URL using wget
+          wget -q -O - 127.0.0.1:3000/live | grep live
+
+        ##  - name: Docker Build and push # added 9 only pushes to 1 repo 
+        ##   uses: docker/build-push-action@v4
+        ## with:
+        ##   context: . 
+        ##   push: true
+        ##   tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+
+      - name: Container Registry Push # added 10 part 2 pushes to mulitple repos local and docker 
+        uses: docker/build-push-action@v4
+        with:
+          context: . 
+          push: true
+          tags: |
+            ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/solar-system${{ github.sha }}
+            
+    dev-deploy:
+      if: contains(github.ref, 'feature/')
+      needs: docker
+      uses: ./.github/workflows/reuse-delpoyment.yml 
+      secrets: 
+        kubeconfig: ${{ secrets.KUBECONFIG }}
+        mongo_password: ${{ secrets.MONGO_PASSWORD }}
+      with:
+          mongodb_uri: ${{ vars.MONGO_URI }}
+          environment: development 
+          k8s-manifest-dir: kubernetes/development/
+
+
+    dev-intergration-testing: 
+       name: Dev Intergration Testing 
+       needs: dev-deploy
+       runs-on: ubuntu-latest
+       steps:
+         - name: Test URL Output using CURL and JQ 
+           env:
+              URL: ${{ needs.prod-deploy.outputs.application-url }}   ## after outputs on job 1 is defined, 1. needs is for what the env needs >> 2. dev-deploy is the job the url is hosted in >> 3. outputs is where the env was created with the different pieces >> 4. APP_INGRESS_URL is the key in the pervious job 
+           run: |
+             echo $URL
+             echo "-----------------------------------------"
+             curl https://$URL/live -s -k | jq -r .status | grep -i live 
+
+    prod-deploy:
+      if: github.ref == 'refs/heads/main'
+      needs: docker
+      uses: ./.github/workflows/reuse-delpoyment.yml 
+      secrets: 
+        kubeconfig: ${{ secrets.KUBECONFIG }}
+        mongo_password: ${{ secrets.MONGO_PASSWORD }}
+      with:
+          mongodb_uri: ${{ vars.MONGO_URI }}
+          environment: development 
+          k8s-manifest-dir: kubernetes/development/
+     
+          ###** HOW TO RUN A SUCCESFUL RESUSABLE WORKFLOW_CALL AND CALLER ****####
+
+     #### resuse applications code by putting into a worker_call >> get relative path and copy and paste with uses command now its a worker_call
+     
+     ## by default secrets. are not accessible on called or caller workflows 
+     ## how to fix ? 
+    ## 1. in reusable workflow_call put secrets >> the name of the secret > followed by required: true 
+    ## 2. in the current folder caller add the secrets, the name: ${{ secrets.name of the secret }}
+     
+    ## by default env. are not accessible on call or caller, it uses the mongo uri (REPO VARIABLES)
+    ## how to fix?
+    ## 1. make the uri into a repo variable >>> copy and paste the uri and make a name for it 
+    ## 2. go to the call (reuse-deloy workflow_call) and put inputs over secrets >> name it like the variable created >> required: true >> type: string 
+    ## 3. go to the call (reuse-deloy workflow_call) >> look for the code and locate mongo_url $env. >> change it to ${{inputs.name of the variable}}
+    ## 4. on the caller add the with: name of the variable: ${{ vars.MONGO_URI }}
+    
+    # DO NOT KEEP THINGS hardcoded LIKE VERSION, OR files IN REUSE-ABLE WORKFLOWS  (inputs.)
+    ## why? when things change in your production like files, versions of application we do not want to go back and change it and cause prolems in your env always add dyanimc variables to resable workflow 
+    ## inputs. are variables of the workflow
+    ### 1. in the call workflow/job/step select the variables you choose for dynamics that other users will change 
+    ### 2. under inputs put name, description,default,required, string
+    ### 3. go to each step and add ${{inputs.name of the variable replacing it}}
+    ### 3.1 command dymanic changes in steps>> names of jobs, files/directories, versions, dbs
+    ### 4. on caller add the names of the inputs >> the default/ custom naming  ex: the nameing of your repos file path that starts with kubernetes/dev or prod path, and name of the job could be called development with committed 
+
+    ## how to use outputs on call and caller resuable workflows (outputs.)
+    ## problem with the $ output. the dev-intergration needed the dev-k8s-deployment url to access the application on ingress https:// so the outputs. allows 1 job to connect to the second job using environments and outputs. NOT env. for db access 
+    ## outputs. values in the workflow  
+    ## 1. go to the call type in under workflow_call, inputs, outputs >> name it >> value: ${{ name of job where the orignal output is . name that host the it . outputs. key url }} >> like this: ${{ jobs.reuse-deploy.outputs.APP_INGRESS_URL }} , secrets
+    ## 2. go to on the caller and replace the orginal key value: APP_INGRESS_URL with  the new name on the reusable file on both DEV AND PROD INTERGRATION TESTING NOT DEPLOY 
+    ## 2.1 should look like this on caller not call URL: ${{ needs.prod-deploy.outputs.application-url }}
+    
+    ## RUN ALL THE WORKFLOW_CALL WITH INPUTS, OUTPUTS, SECRETS, AND REPO VARIABLES FOR DBS  AND YOU WILL HAVE A DYNAMIC/ REUSABLE CALL AND CALLER
+
+
+    prod-intergration-testing: 
+       if: github.ref == 'refs/heads/main'
+       name: prod Intergration Testing 
+       needs: prod-deploy
+       runs-on: ubuntu-latest
+       steps:
+         - name: Test URL Output using CURL and JQ 
+           env:
+             URL: ${{ needs.prod-deploy.outputs.application-url }}   ## after outputs on job 1 is defined, 1. needs is for what the env needs >> 2. dev-deploy is the job the url is hosted in >> 3. outputs is where the env was created with the different pieces >> 4. APP_INGRESS_URL is the key in the pervious job 
+           run: |
+             echo $URL
+             echo "-----------------------------------------"
+             curl https://$URL/live -s -k | jq -r .status | grep -i live 
+
+           ## CHANGE ALL DEV INPUTS >>> TO PROD BEFORE COMMITTING  ## also make sure to add the secrets and variables and restrictions at the repo environment level before prod is committed and pushed 
+           ## in environment named: production in repo setting  create 3 rules, and 2 variable and 1 secret 
+           ## rules: timer, reviewer, ONLY MAIN branch can deploy | variable is NAMESPACE = production, REPLICA = 5 , KUBECONFIG = kuberenetes config key that connects github actions to it 
+           ## successful commits are only on the main branch others are rejected 
+           ## GO TO solar-system-prod.yml and see how it gets deployed 
+
+           ## welcome to solar-system-prod.yml
+           ## in previous yml file user tried commit and push production but got denied
+           ## KEEP FILES FROM unit testing >> code coverage >>> docker >>  THE SAME
+           ## HOW TO DEPLOY IN PRODUCTION ON THE MAIN BRANCH ###
+           ## 1. use a IF EXPRESSION "if: contains(github.ref, 'feature/')" in dev-deploy && dev-interagration
+           ## 1.1 when committed and pushed on the feature branch the devs are successful but the prods is skipped  
+           ## 2. use a IF EXPRESSION "if: github.ref == 'refs/heads/main'" + needs: docker in prod-deploy 
+           ## 2.1 use a IF EXPRESSION "if: github.ref == 'refs/heads/main'" prod-interagration BUT KEEP THE NEEDS THE SAME !!
+           ## 2.2 must be in the main branch to commit and push for SUCCESS 
+           ## 2.3 WHY NEED IS DOCKER ? its because when committed it goes thru the unit test > code coverage > docker > prod-deploy > prod-intergation it skips the devs
+           ## 3 REQUEST PULL REQUEST FOR THE FEATURE BRANCH 
+           ## 4. REVIEWER LOOKS AT THE CHANGES >> checks if all ci/cd from unit testing to devs are configured correctly and url link to look at site 
+           ## 5. REVIEWER APPROVES CHANGES AND MERGES CHANGES TO MAIN BRANCH
+           ## 6. commit and push the workflow Now SUCCESSFUL prod and skipped devs
+           ## 7. full CI/CD COMPLETED
+
+
+

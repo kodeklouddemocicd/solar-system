@@ -1,0 +1,151 @@
+### connect to the solar-system-reused
+
+
+name: Deployment - Reusable Workflow 
+
+on:
+    workflow_call:
+      inputs: ## by default call does not use env. > must locate and copy the url > paste into repo vars and secrets > add to workflow_call>> inputs:, name, required: true, type: string >> go to the env. change out put to ${{inputs. name of the variable}} >> make configures on caller 
+        MONGO_URI:
+          required: true
+          type: string
+        kubectl-verison:     ## go to each step and replace the hardcode with ${{inputs.name}} makes them dynamic and changeable to other users 
+          description: provide the required kubectl version 
+          default: v1.27.0 
+          required: false ## false means if not specified this is the default
+          type: string
+        k8s-manifest-dir:
+          description: Directory containing Kubernetes manifest files
+          default: kubernetes/
+          required: true
+          type: string
+        Environment:
+          description: provide the deployment environmemt name 
+          default: dev
+          required: true
+          type: string
+      outputs:
+        application-url:
+          value: ${{jobs.reuse-deploy.outputs.APP_INGRESS_URL}}
+      secrets:  ## by default call does not use secrets. >> how to make it accessible? >> find the ALL secrets in reusable code >> on workflow_call add secrets, the name, required: true >> go to the called and configure it 
+        KUBECONFIG:
+          required: true
+        MONGO_PASSWORD:
+          required: true
+      
+        
+
+
+jobs:
+    reuse-deploy:
+      environment: ## added later for manual approval part of the ci/cd > steps: 1. create a environment on repo setting and name it  >> 2. put secrets and variables at the environment level from repo note it has higher authority then repo secrets and variable > 3. at the kubernetes dev level put enviroments: > 4. then name: put the name of the created environment that holds the secrets and variable >> 5. put https:// and paste the url of the outputs from previous steps involving dev test job and dev intergration using the same url  >> 6. commit and push and go to linux and type in "k -n development get deployments.apps" to see it take higher priority on the replica of work nodes 
+       name: ${{inputs.Environment}} 
+       url: https://${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }}
+      outputs:                                                                          ## remember outputs are for intergration dev testing not for current job how does it work 1. steps >> created in "name: Set App ingress Host URL" >> 2. set-ingress-host-address is the id key >> 3. outputs. is the job level command it needs to be in order to go to 2nd job >> 4. APP_INGRESS_HOST holds the url that is getting transferred
+        APP_INGRESS_URL: ${{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }} ## remember outputs are for intergration dev testing not for current job
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout Repo 
+          uses: actions/checkout/@v4
+
+        - name: install kubectl CLI 
+          uses: azure/setup-kubectl@v3
+          with:
+            version: "${{inputs.kubectl-verison}}"
+
+        - name: Set kubeconfig file 
+          uses: azure/k8s-set-context@v5
+          with:
+            method: kubeconfig
+            kubeconfig: ${{ secrets.KUBECONFIG }}  ## must update secret everytime >> use playground multi-node >> command: "kubectl config view --raw" > copy whole path > Paste in GITHUB SECERTS AND VARIABLES SETTINGS set it as a secret 
+
+
+        - name: Fetch kubernetes Cluster Details 
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands 
+          run: |
+            kubectl version 
+            echo -----------------------------------------
+            kubectl get nodes
+         
+        - name: Dymanically save the Nginx ingress to as a custom GITHUB environment Variable 
+          continue-on-error: true ## not in the demo/ but added to continue kube will not connect to the github actions to run commmands
+          run: |
+            echo "INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath="{.status.loadbalancer.ingress[0].ip}")" >> $GITHUB_ENV
+
+        - name: Replace token in Manifest files ## replace space holder values in kube development repo before pushing
+          uses: cschleiden/replace-tokens@v1
+          with:
+           tokenPrefix: '_{_'
+           tokenSuffix: '_}_'
+           files: '["${{ inputs.k8s-manifest-dir }}/*.yaml"]'
+          env:
+            NAMESPACE: ${{ vars.NAMESPACE }}
+            REPLICAS: ${{vars.REPLICAS}}
+            IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+            INGRESS_IP: ${{ env.INGRESS_IP }}                                                             ## command: k -n ingress-nginx get svc ingress-nginx-controller #add this part to get only the external ip #-o jsonpath="{.status.loadbalancer.ingress[0].ip}"
+                    
+        - name: Check files ## checking if the variables are changed in the file
+          run: |
+            cat ${{ inputs.k8s-manifest-dir }}*.yaml
+
+        - name: Create MongoDB Secret # In development.yaml file the secret ref using DOCKERFILE env needs to be defined and apply the env variables with kubectl apply
+          run: |
+            kubectl -n ${{ vars.NAMESPACE }} create secret genric mongo-db-creds \
+            --from-literal=MONGO_URL=${{ inputs.MONGO_URI }} \
+            --from-literal=MONGO_USERNAME=${{ vars.MONGO_USERNAME }} \
+            --from-literal=MONGO_PASSWORD=${{ secrets.MONGO_PASSWORD }} \
+            --save-config \
+            --dry-run=client \ 
+            -o yaml | kubectl apply -f - 
+
+        - name: Deloy to Dev Env  ## now that is it defined, deploy
+          run: |
+            Kubectl apply -f ${{ inputs.k8s-manifest-dir }}
+        
+         ## 1. AFTER THE SUCCESS OF THE DEPLOY TO DEV COMMITTED PUSH WORKFLOW ***
+         ## 2. GO lunix distro that holds the kubernetes attached ***
+         ## 3. type in command line: "k -n development get all" >> output: the 2 worker pods (replicas variable number was created Actions secrets and variables settings) running the image amd service cluster-ip ***
+         ## 4. how to access the app ? type in command line: "k -n development get ing" >> output: HOST URL >> copy >> paste in browser >> interact with app ***
+         ## 5. how to get ONLY the ip address of the host? type in the command line: "k -n development get ing -o jsonpath=" {.items[0].spec.tls.[0].host[0]}"
+
+        - name: Set App ingress Host URL # passing values between steps and job doc >> make use of the job output then url can go into the second job for testing 
+          id: set-ingress-host-address
+          run: |
+            echo "APP_INGRESS_HOST=$(kubectl -n ${{ vars.NAMESPACE }} get ingress -o jsonpath=" {.items[0].spec.tls.[0].host[0]}")" >> "$GITHUB_OUTPUT"
+    
+
+
+
+          ###** HOW TO RUN A SUCCESFUL RESUSABLE WORKFLOW_CALL AND CALLER ****####
+          
+     #### resuse applications code by putting into a worker_call >> get relative path and copy and paste with uses command now its a worker_call
+     
+     ## by default secrets. are not accessible on called or caller workflows 
+     ## how to fix ? 
+    ## 1. in reusable workflow_call put secrets >> the name of the secret > followed by required: true 
+    ## 2. in the current folder caller add the secrets, the name: ${{ secrets.name of the secret }}
+     
+    ## by default env. are not accessible on call or caller, it uses the mongo uri (USE REPO VARIABLES)
+    ## how to fix?
+    ## 1. make the uri into a repo variable >>> copy and paste the uri and make a name for it 
+    ## 2. go to the call (reuse-deloy workflow_call) and put inputs over secrets >> name it like the variable created >> required: true >> type: string 
+    ## 3. go to the call (reuse-deloy workflow_call) >> look for the code and locate mongo_url $env. >> change it to ${{inputs.name of the variable}}
+    ## 4. on the caller add the with: name of the variable: ${{ vars.MONGO_URI }}
+    
+    # DO NOT KEEP THINGS hardcoded LIKE VERSION, OR files IN REUSE-ABLE WORKFLOWS  (inputs.)
+    ## why? when things change in your production like files, versions of application we do not want to go back and change it and cause prolems in your env always add dyanimc variables to resable workflow 
+    ## inputs. are variables of the workflow
+    ### 1. in the call workflow/job/step select the variables you choose for dynamics that other users will change 
+    ### 2. under inputs put name, description,default,required, string
+    ### 3. go to each step and add ${{inputs.name of the variable replacing it}}
+    ### 3.1 command dymanic changes in steps>> names of jobs, files/directories, versions, dbs
+    ### 4. on caller add the names of the inputs >> the default/ custom naming  ex: the nameing of your repos file path that starts with kubernetes/dev or prod path, and name of the job could be called development with committed 
+
+    ## how to use outputs on call and caller resuable workflows (outputs.)
+    ## problem with the $ output. the dev-intergration needed the dev-k8s-deployment url to access the application on ingress https:// so the outputs. allows 1 job to connect to the second job using environments and outputs. NOT env. for db access 
+    ## outputs. values in the workflow  
+    ## 1. go to the call type in under workflow_call, inputs, outputs >> name it >> value: ${{ name of job where the orignal output is . name that host the it . outputs. key url }} >> like this: ${{ jobs.reuse-deploy.outputs.APP_INGRESS_URL }} , secrets
+    ## 2. go to on the caller and replace the orginal key value: APP_INGRESS_URL with  the new name on the reusable file on both DEV AND PROD INTERGRATION TESTING NOT DEPLOY 
+    ## 2.1 should look like this on caller not call URL: ${{ needs.prod-deploy.outputs.application-url }}
+    
+    ## RUN ALL THE WORKFLOW_CALL WITH INPUTS, OUTPUTS, SECRETS, AND REPO VARIABLES FOR DBS  AND YOU WILL HAVE A DYNAMIC/ REUSABLE CALL AND CALLER
