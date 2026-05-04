@@ -7,7 +7,7 @@ on:
 
 jobs:
   assign-label:
-    continue-on-error: true # NOT APART OF THE DEMO
+    #continue-on-error: true # NOT APART OF THE DEMO
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.1
@@ -32,7 +32,7 @@ jobs:
 # 5. git hub is going to store issue in: issue_title="${{ github.event.issue.title }}"
 # 6. run a if, else and fi statement if there is a breach or not in github repo, it will assign a new label 
 # 7. Commit and push >> go to issues sumbit a issue>> workflow is triggered >> go to actions see the logs 
-# 8. go back to issues and put bug"; $GITHUB_WORKSPACE" is command after the double quotes"" that wants to get a list of repo >> it injects malicious code 
+# 8. go back to issues and put bug"; ls $GITHUB_WORKSPACE" is command after the double quotes"" that wants to get a list of repo >> it injects malicious code 
 # 9. go to the logs the malicies code gets excuted all contents of file is shown
 
 # HOW TO EXTRACT SECRETS
